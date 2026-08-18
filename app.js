@@ -1,35 +1,3 @@
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-const MODULOS = ["Comercial","Cobranza","Comunes","Contabilidad","Control de Proyectos","CRM/Contactos","Factura Electronica","Factura Electronica Peru","Activo Fijo","Punto de Venta","Tesoreria","Otro"];
-const IMG_BUCKET = "incidentes-imagenes";
-const MAX_IMAGENES = 3;
-const WEBP_QUALITY = 0.82;
-
-const root = document.getElementById("app-root");
-
-let state = {
-  session: null,
-  items: [],
-  loading: true,
-  showForm: false,
-  form: emptyForm(),
-  pendingImages: [],
-  search: "",
-  moduloFilter: "Todos",
-  expandedId: null,
-  errorMsg: "",
-  loginError: "",
-};
-
-function emptyForm() {
-  return { id: null, fecha: new Date().toISOString().slice(0,10), modulo: MODULOS[0], sintoma: "", causa_raiz: "", tablas_scripts: "", solucion: "", cliente: "", autor: "", tags: "", notas: "", imagenes: [] };
-}
-
-// ---------- Compresion de imagenes (mismo ancho/alto, menor peso) ----------
-function compressImage(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const reader = new FileReader();
     reader.onload = (e) => { img.src = e.target.result; };
     reader.onerror = reject;
     img.onload = () => {
@@ -47,29 +15,29 @@ function compressImage(file) {
     reader.readAsDataURL(file);
   });
 }
-
+ 
 async function uploadImages(files) {
   const urls = [];
   for (const file of files) {
     const blob = await compressImage(file);
     const path = `${state.session.user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
-    const { error } = await supabase.storage.from(IMG_BUCKET).upload(path, blob, { contentType: "image/webp" });
+    const { error } = await supabaseClient.storage.from(IMG_BUCKET).upload(path, blob, { contentType: "image/webp" });
     if (error) throw error;
-    const { data } = supabase.storage.from(IMG_BUCKET).getPublicUrl(path);
+    const { data } = supabaseClient.storage.from(IMG_BUCKET).getPublicUrl(path);
     urls.push(data.publicUrl);
   }
   return urls;
 }
-
+ 
 // ---------- Carga de datos ----------
 async function loadData(silent) {
   if (!silent) { state.loading = true; render(); }
-  const { data, error } = await supabase.from("incidentes").select("*").order("fecha", { ascending: false });
+  const { data, error } = await supabaseClient.from("incidentes").select("*").order("fecha", { ascending: false });
   if (!error) state.items = data;
   state.loading = false;
   render();
 }
-
+ 
 let pollTimer = null;
 function startPolling() {
   if (pollTimer) return;
@@ -77,24 +45,24 @@ function startPolling() {
     if (!state.showForm) loadData(true);
   }, 15000);
 }
-
+ 
 // ---------- Autenticacion ----------
 async function handleLogin(email, password) {
   state.loginError = "";
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
   if (error) { state.loginError = "Correo o contrasena incorrectos."; render(); return; }
 }
-
+ 
 async function handleLogout() {
-  await supabase.auth.signOut();
+  await supabaseClient.auth.signOut();
 }
-
-supabase.auth.onAuthStateChange((_event, session) => {
+ 
+supabaseClient.auth.onAuthStateChange((_event, session) => {
   state.session = session;
   if (session) { loadData(); startPolling(); }
   else render();
 });
-
+ 
 // ---------- Guardar / eliminar ----------
 function validateForm() {
   if (!state.form.sintoma.trim()) return "Describe el sintoma o error reportado.";
@@ -102,7 +70,7 @@ function validateForm() {
   if (!state.form.modulo) return "Selecciona un modulo.";
   return "";
 }
-
+ 
 async function handleSave() {
   const v = validateForm();
   if (v) { state.errorMsg = v; render(); return; }
@@ -116,10 +84,10 @@ async function handleSave() {
     const payload = { ...state.form, imagenes: nuevasImagenes };
     delete payload.id;
     if (state.form.id) {
-      const { error } = await supabase.from("incidentes").update(payload).eq("id", state.form.id);
+      const { error } = await supabaseClient.from("incidentes").update(payload).eq("id", state.form.id);
       if (error) throw error;
     } else {
-      const { error } = await supabase.from("incidentes").insert(payload);
+      const { error } = await supabaseClient.from("incidentes").insert(payload);
       if (error) throw error;
     }
     state.showForm = false;
@@ -131,13 +99,13 @@ async function handleSave() {
     render();
   }
 }
-
+ 
 async function handleDelete(id) {
-  await supabase.from("incidentes").delete().eq("id", id);
+  await supabaseClient.from("incidentes").delete().eq("id", id);
   state.expandedId = null;
   await loadData();
 }
-
+ 
 function startEdit(item) {
   state.form = { ...item };
   state.pendingImages = [];
@@ -145,7 +113,7 @@ function startEdit(item) {
   state.expandedId = null;
   render();
 }
-
+ 
 // ---------- Render ----------
 function getFiltered() {
   return state.items.filter(it => {
@@ -156,11 +124,11 @@ function getFiltered() {
     return haystack.includes(q);
   });
 }
-
+ 
 function render() {
   if (!state.session) { renderLogin(); return; }
   const filtered = getFiltered();
-
+ 
   root.innerHTML = `
     <div class="top-bar">
       <div>
@@ -171,9 +139,9 @@ function render() {
       </div>
       <button class="btn" id="toggle-form-btn">${state.showForm ? "Cancelar" : "+ Nuevo registro"}</button>
     </div>
-
+ 
     ${state.showForm ? renderForm() : ""}
-
+ 
     <div class="search-bar">
       <input class="input" id="search-input" placeholder="Buscar por sintoma, tabla, solucion, tag..." value="${escapeAttr(state.search)}" />
       <select id="modulo-filter">
@@ -181,14 +149,14 @@ function render() {
         ${MODULOS.map(m => `<option value="${m}" ${state.moduloFilter === m ? "selected" : ""}>${m}</option>`).join("")}
       </select>
     </div>
-
+ 
     ${state.loading ? `<p class="hint">Cargando registros...</p>` : ""}
     ${!state.loading && filtered.length === 0 ? `<p class="hint">No hay registros que coincidan. Prueba con otro termino o crea uno nuevo.</p>` : ""}
     ${!state.loading ? filtered.map(renderCard).join("") : ""}
   `;
   attachHandlers();
 }
-
+ 
 function renderForm() {
   const f = state.form;
   return `
@@ -227,7 +195,7 @@ function renderForm() {
     </div>
   `;
 }
-
+ 
 function renderCard(item) {
   const isOpen = state.expandedId === item.id;
   const sintomaShort = item.sintoma.length > 90 && !isOpen ? item.sintoma.slice(0,90) + "..." : item.sintoma;
@@ -255,7 +223,7 @@ function renderCard(item) {
     </div>
   `;
 }
-
+ 
 function renderLogin() {
   root.innerHTML = `
     <div class="login-box">
@@ -275,11 +243,11 @@ function renderLogin() {
     handleLogin(email, password);
   };
 }
-
+ 
 function attachHandlers() {
   const logoutLink = document.getElementById("logout-link");
   if (logoutLink) logoutLink.onclick = (e) => { e.preventDefault(); handleLogout(); };
-
+ 
   const toggleBtn = document.getElementById("toggle-form-btn");
   if (toggleBtn) toggleBtn.onclick = () => {
     state.showForm = !state.showForm;
@@ -287,13 +255,13 @@ function attachHandlers() {
     state.errorMsg = "";
     render();
   };
-
+ 
   const searchInput = document.getElementById("search-input");
   if (searchInput) searchInput.oninput = (e) => { state.search = e.target.value; render(); document.getElementById("search-input").focus(); document.getElementById("search-input").selectionStart = document.getElementById("search-input").value.length; };
-
+ 
   const moduloFilter = document.getElementById("modulo-filter");
   if (moduloFilter) moduloFilter.onchange = (e) => { state.moduloFilter = e.target.value; render(); };
-
+ 
   // Form fields
   bindField("f-fecha", "fecha");
   bindField("f-modulo", "modulo");
@@ -305,16 +273,16 @@ function attachHandlers() {
   bindField("f-autor", "autor");
   bindField("f-tags", "tags");
   bindField("f-notas", "notas");
-
+ 
   const imgInput = document.getElementById("f-imagenes");
   if (imgInput) imgInput.onchange = (e) => {
     const files = Array.from(e.target.files).slice(0, MAX_IMAGENES);
     state.pendingImages = files;
   };
-
+ 
   const saveBtn = document.getElementById("save-btn");
   if (saveBtn) saveBtn.onclick = handleSave;
-
+ 
   root.querySelectorAll(".card").forEach(card => {
     card.onclick = (e) => {
       if (e.target.closest(".edit-btn") || e.target.closest(".delete-btn")) return;
@@ -330,21 +298,22 @@ function attachHandlers() {
     btn.onclick = (e) => { e.stopPropagation(); handleDelete(btn.dataset.id); };
   });
 }
-
+ 
 function bindField(elId, stateKey) {
   const el = document.getElementById(elId);
   if (el) el.oninput = (e) => { state.form[stateKey] = e.target.value; };
 }
-
+ 
 function escapeHtml(str) {
   return String(str).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 function escapeAttr(str) { return escapeHtml(str); }
-
+ 
 // ---------- Arranque ----------
 (async function init() {
-  const { data } = await supabase.auth.getSession();
+  const { data } = await supabaseClient.auth.getSession();
   state.session = data.session;
   if (state.session) { await loadData(); startPolling(); }
   else render();
 })();
+ 
